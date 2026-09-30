@@ -21,15 +21,11 @@ import sys
 
 import requests
 
-__all__ = ["Spider", "DEFAULT_UA", "PLAYER_UA"]
+__all__ = ["Spider", "DEFAULT_UA"]
 
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-)
-PLAYER_UA = (
-    "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 )
 
 

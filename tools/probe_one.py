@@ -31,7 +31,6 @@ if SHIM_DIR not in sys.path:
 # Belt and braces: any socket the source opens itself is capped too.
 socket.setdefaulttimeout(float(os.environ.get("PROBE_SOCKET_TIMEOUT", "20")))
 
-MAX_ITEMS = 400
 SEARCH_KEYWORD = os.environ.get("PROBE_SEARCH_KEYWORD", "电影")
 
 

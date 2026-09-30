@@ -50,8 +50,6 @@ def site_key(name: str) -> str:
 
 
 def build_api(name: str, args) -> str:
-    if args.api_mode == "local":
-        return "./py/" + name
     raw = "https://raw.githubusercontent.com/%s/%s/py/%s" % (
         args.repo,
         args.ref,
@@ -72,17 +70,16 @@ def main() -> int:
     parser.add_argument("--ref", default="main")
     parser.add_argument("--prefix", default=DEFAULT_PREFIX,
                         help="proxy prefix for raw.githubusercontent.com")
-    parser.add_argument("--api-mode", choices=("remote", "local"), default="remote")
     parser.add_argument("--min-failures", type=int, default=2,
                         help="consecutive probe failures before a source is dropped")
     parser.add_argument("--max-seconds", type=float, default=1.0,
                         help="drop sources whose listing call took longer than this "
                              "(0 disables the speed check)")
-    parser.add_argument("--logo", default="")
     args = parser.parse_args()
 
-    if args.api_mode == "remote" and not args.repo:
-        print("ERROR: --repo owner/name is required for --api-mode remote", file=sys.stderr)
+    if not args.repo:
+        print("ERROR: --repo owner/name is required (the api urls point at it)",
+              file=sys.stderr)
         return 2
 
     names = collect_sources(args.py_dir)
@@ -146,7 +143,7 @@ def main() -> int:
         }
         for name in kept
     ]
-    payload = {"spider": "", "logo": args.logo, "sites": sites}
+    payload = {"spider": "", "logo": "", "sites": sites}
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
 
@@ -164,7 +161,7 @@ def main() -> int:
             for name in names
         ]
         with open(args.also_all, "w", encoding="utf-8") as handle:
-            json.dump({"spider": "", "logo": args.logo, "sites": all_sites},
+            json.dump({"spider": "", "logo": "", "sites": all_sites},
                       handle, ensure_ascii=False, indent=2)
 
     with open(args.state, "w", encoding="utf-8") as handle:
