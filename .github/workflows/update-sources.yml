@@ -92,16 +92,43 @@ jobs:
             --max-seconds "${{ github.event.inputs.max_seconds || 1.0 }}"
 
       - name: Commit results
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tuntun.json tuntun-all.json tools/state.json reports/latest.md
+          FILES="tuntun.json tuntun-all.json tools/state.json reports/latest.md"
+          git add $FILES
           if git diff --cached --quiet; then
             echo "nothing changed"
-          else
-            git commit -m "chore: refresh sources $(date -u +%Y-%m-%d)"
-            git push
+            exit 0
           fi
+          git commit -m "chore: refresh sources $(date -u +%Y-%m-%d)"
+          # A concurrent push (e.g. someone editing tools/) can reject ours, so
+          # retry: take the remote tree, then re-apply our freshly generated files.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:$BRANCH"; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::push rejected (attempt $attempt); re-applying generated files"
+            STAGE="$RUNNER_TEMP/generated"
+            mkdir -p "$STAGE"
+            cp $FILES "$STAGE/"
+            git fetch origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+            cp "$STAGE/tuntun.json" tuntun.json
+            cp "$STAGE/tuntun-all.json" tuntun-all.json
+            mkdir -p tools reports
+            cp "$STAGE/state.json" tools/state.json
+            cp "$STAGE/latest.md" reports/latest.md
+            git add $FILES
+            git commit -m "chore: refresh sources $(date -u +%Y-%m-%d)"
+            sleep 5
+          done
+          echo "::error::could not push after 3 attempts"
+          exit 1
 
       - name: Upload probe report
         if: always()
