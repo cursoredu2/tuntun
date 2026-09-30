@@ -1,10 +1,16 @@
 name: update-sources
 
-# Drop this folder into a fork of ge6bu6/tuntun and the interface JSON below
-# regenerates itself: daily, whenever sources change, or on demand.
-#   tuntun.json      -> only sources that passed the probe
-#   tuntun-all.json  -> every source, unfiltered
-#   reports/latest.md-> human readable pass/fail table
+# Regenerates a player interface JSON by probing the sources published by the
+# UPSTREAM repository (not this fork), so new/removed upstream sources show up
+# here automatically without syncing the fork.
+#
+#   tuntun.json       -> only sources that answered fast enough and really
+#                        returned a listing
+#   tuntun-all.json   -> every upstream source, unfiltered
+#   reports/latest.md -> human readable pass/fail table
+#
+# Point your player at:
+#   https://raw.githubusercontent.com/<you>/<fork>/main/tuntun.json
 
 on:
   schedule:
@@ -15,8 +21,8 @@ on:
         description: parallel probes
         default: "12"
       timeout:
-        description: seconds per source
-        default: "25"
+        description: seconds allowed per source
+        default: "20"
       min_failures:
         description: consecutive failures before a source is dropped
         default: "2"
@@ -25,7 +31,6 @@ on:
         default: "1.0"
   push:
     paths:
-      - "py/**"
       - "tools/**"
       - ".github/workflows/update-sources.yml"
 
@@ -35,6 +40,10 @@ permissions:
 concurrency:
   group: update-sources
   cancel-in-progress: false
+
+env:
+  UPSTREAM: ge6bu6/tuntun
+  UPSTREAM_REF: main
 
 jobs:
   update:
@@ -54,25 +63,28 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r tools/requirements.txt
 
-      - name: Probe every source
+      - name: Probe upstream sources
         continue-on-error: true
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PROBE_SOCKET_TIMEOUT: "20"
         run: |
           python tools/probe_all.py \
-            --py-dir py \
+            --fetch-upstream "$UPSTREAM" \
+            --upstream-ref "$UPSTREAM_REF" \
+            --py-dir .probe/py \
             --out tools/probe.json \
             --concurrency "${{ github.event.inputs.concurrency || 12 }}" \
-            --timeout "${{ github.event.inputs.timeout || 25 }}"
+            --timeout "${{ github.event.inputs.timeout || 20 }}"
 
       - name: Rebuild interface json
         run: |
           python tools/gen_sources.py \
-            --py-dir py \
+            --py-dir .probe/py \
             --probe tools/probe.json \
             --state tools/state.json \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$GITHUB_REF_NAME" \
+            --repo "$UPSTREAM" \
+            --ref "$UPSTREAM_REF" \
             --out tuntun.json \
             --also-all tuntun-all.json \
             --report reports/latest.md \
