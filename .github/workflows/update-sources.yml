@@ -1,0 +1,103 @@
+name: update-sources
+
+# Drop this folder into a fork of ge6bu6/tuntun and the interface JSON below
+# regenerates itself: daily, whenever sources change, or on demand.
+#   tuntun.json      -> only sources that passed the probe
+#   tuntun-all.json  -> every source, unfiltered
+#   reports/latest.md-> human readable pass/fail table
+
+on:
+  schedule:
+    - cron: "17 18 * * *" # daily 18:17 UTC (02:17 UTC+8)
+  workflow_dispatch:
+    inputs:
+      concurrency:
+        description: parallel probes
+        default: "12"
+      timeout:
+        description: seconds per source
+        default: "25"
+      min_failures:
+        description: consecutive failures before a source is dropped
+        default: "2"
+      max_seconds:
+        description: drop sources whose listing took longer than this (seconds)
+        default: "1.0"
+  push:
+    paths:
+      - "py/**"
+      - "tools/**"
+      - ".github/workflows/update-sources.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-sources
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r tools/requirements.txt
+
+      - name: Probe every source
+        continue-on-error: true
+        env:
+          PROBE_SOCKET_TIMEOUT: "20"
+        run: |
+          python tools/probe_all.py \
+            --py-dir py \
+            --out tools/probe.json \
+            --concurrency "${{ github.event.inputs.concurrency || 12 }}" \
+            --timeout "${{ github.event.inputs.timeout || 25 }}"
+
+      - name: Rebuild interface json
+        run: |
+          python tools/gen_sources.py \
+            --py-dir py \
+            --probe tools/probe.json \
+            --state tools/state.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" \
+            --out tuntun.json \
+            --also-all tuntun-all.json \
+            --report reports/latest.md \
+            --min-failures "${{ github.event.inputs.min_failures || 2 }}" \
+            --max-seconds "${{ github.event.inputs.max_seconds || 1.0 }}"
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tuntun.json tuntun-all.json tools/state.json reports/latest.md
+          if git diff --cached --quiet; then
+            echo "nothing changed"
+          else
+            git commit -m "chore: refresh sources $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Upload probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-report
+          path: |
+            tools/probe.json
+            reports/latest.md
+          if-no-files-found: warn
+          retention-days: 14
